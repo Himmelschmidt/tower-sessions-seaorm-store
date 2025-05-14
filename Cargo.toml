@@ -1,0 +1,41 @@
+[package]
+name = "tower-sessions-seaorm-store"
+description = "SeaORM session store for `tower-sessions`."
+version = "0.1.0"
+edition = "2021"
+authors = ["Sholom Ber L <sholom@sholomber.com>"]
+license = "MIT"
+homepage = "https://github.com/Himmelschmidt/tower-sessions-seaorm-store"
+keywords = ["axum", "sessions", "cookie", "tower", "sea-orm", "postgres"]
+categories = ["asynchronous", "network-programming", "web-programming"]
+repository = "https://github.com/Himmelschmidt/tower-sessions-seaorm-store"
+documentation = "https://docs.rs/tower-sessions-seaorm-store"
+readme = "README.md"
+
+[features]
+default = ["postgres"]
+postgres = ["sea-orm/sqlx-postgres", "sea-orm/runtime-tokio-rustls"]
+# sqlite = ["sea-orm/sqlx-sqlite", "sea-orm/runtime-tokio-rustls"] # For later
+# mysql = ["sea-orm/sqlx-mysql", "sea-orm/runtime-tokio-rustls"] # For later
+
+[dependencies]
+async-trait = "0.1.88"
+rmp-serde = "1.3.0"
+sea-orm = { version = "1.1.11", features = ["macros", "with-time"] }
+thiserror = "2.0.12"
+time = { version = "0.3.41", features = ["serde-well-known"] }
+tower-sessions-core = { version = "0.14.0", features = ["deletion-task"] }
+tracing = "0.1.41"
+
+[dev-dependencies]
+axum = "0.8.4"
+tower-sessions = "0.14.0"
+tokio = { version = "1.45.0", features = ["full"] }
+sea-orm-migration = { version = "1.1.11", features = [
+    "runtime-tokio-rustls",
+    "sqlx-postgres",
+] }
+
+# [[example]]
+# name = "postgres"
+# required-features = ["postgres"]
