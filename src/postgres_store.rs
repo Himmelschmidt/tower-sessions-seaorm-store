@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     Set, TransactionTrait,
 };
 use time::OffsetDateTime;
@@ -73,6 +73,8 @@ use crate::entity::session::{self, ActiveModel as SessionActiveModel, Entity as 
 pub struct PostgresStore {
     /// The Sea-ORM database connection used for database operations.
     conn: DatabaseConnection,
+    /// The name of the database schema used for storing sessions.
+    schema_name: String,
     /// The name of the database table used for storing sessions.
     table_name: String,
 }
@@ -106,7 +108,8 @@ impl PostgresStore {
     pub fn new(conn: DatabaseConnection) -> Self {
         Self {
             conn,
-            table_name: "tower_sessions".to_string(),
+            schema_name: "tower_sessions".to_string(),
+            table_name: "session".to_string(),
         }
     }
 
@@ -137,10 +140,67 @@ impl PostgresStore {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_table_name(mut self, table_name: impl Into<String>) -> Self {
-        self.table_name = table_name.into();
-        self
+    /// Set the session table schema name with the provided name.
+    pub fn with_schema_name(mut self, schema_name: impl AsRef<str>) -> Result<Self, String> {
+        let schema_name = schema_name.as_ref();
+        if !is_valid_identifier(schema_name) {
+            return Err(format!(
+                "Invalid schema name '{}'. Schema names must start with a letter or underscore \
+                 (including letters with diacritical marks and non-Latin letters). Subsequent \
+                 characters can be letters, underscores, digits (0-9), or dollar signs ($).",
+                schema_name
+            ));
+        }
+
+        schema_name.clone_into(&mut self.schema_name);
+        Ok(self)
     }
+
+    /// Set the session table name with the provided name.
+    pub fn with_table_name(mut self, table_name: impl AsRef<str>) -> Result<Self, String> {
+        let table_name = table_name.as_ref();
+        if !is_valid_identifier(table_name) {
+            return Err(format!(
+                "Invalid table name '{}'. Table names must start with a letter or underscore \
+                 (including letters with diacritical marks and non-Latin letters). Subsequent \
+                 characters can be letters, underscores, digits (0-9), or dollar signs ($).",
+                table_name
+            ));
+        }
+
+        table_name.clone_into(&mut self.table_name);
+        Ok(self)
+    }
+
+    /// Migrate the session schema.
+    ///
+    /// This method creates the necessary database schema and table for session storage
+    /// using Sea-ORM's migration system. It will create the schema if it doesn't exist
+    /// and then create the session table with the appropriate structure.
+    ///
+    /// **Note**: This method is only available when the `migration` feature is enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use sea_orm::Database;
+    /// use tower_sessions_seaorm_store::PostgresStore;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let conn = Database::connect("postgres://postgres:password@localhost:5432/sessions").await?;
+    /// let store = PostgresStore::new(conn);
+    /// store.migrate().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "migration")]
+    pub async fn migrate(&self) -> Result<(), crate::SeaOrmStoreError> {
+        use crate::migration::{Migrator, MigratorTrait};
+        
+        Migrator::up(&self.conn, None).await?;
+        Ok(())
+    }
+
 }
 
 #[async_trait]
@@ -187,17 +247,13 @@ impl SessionStore for PostgresStore {
     /// # }
     /// ```
     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-        let txn = self
-            .conn
-            .begin()
-            .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+        let txn = self.conn.begin().await.map_err(crate::SeaOrmStoreError::SeaOrm)?;
 
         // Session ID collision mitigation
         while SessionEntity::find_by_id(record.id.to_string())
             .one(&txn)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?
+            .map_err(crate::SeaOrmStoreError::SeaOrm)?
             .is_some()
         {
             // Generate a new ID if there's a collision
@@ -205,8 +261,7 @@ impl SessionStore for PostgresStore {
         }
 
         // Serialize the session data using MessagePack
-        let data =
-            rmp_serde::to_vec(record).map_err(|e| session_store::Error::Encode(e.to_string()))?;
+        let data = rmp_serde::to_vec(record).map_err(crate::SeaOrmStoreError::Encode)?;
 
         // Convert time::OffsetDateTime to DateTimeWithTimeZone
         let expiry_date = convert_time_to_datetime(record.expiry_date);
@@ -221,11 +276,9 @@ impl SessionStore for PostgresStore {
         session_model
             .insert(&txn)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            .map_err(crate::SeaOrmStoreError::SeaOrm)?;
 
-        txn.commit()
-            .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+        txn.commit().await.map_err(crate::SeaOrmStoreError::SeaOrm)?;
 
         Ok(())
     }
@@ -271,41 +324,43 @@ impl SessionStore for PostgresStore {
     /// ```
     async fn save(&self, record: &Record) -> session_store::Result<()> {
         // Serialize the session data using MessagePack
-        let data =
-            rmp_serde::to_vec(record).map_err(|e| session_store::Error::Encode(e.to_string()))?;
+        let data = rmp_serde::to_vec(record).map_err(crate::SeaOrmStoreError::Encode)?;
 
         // Convert time::OffsetDateTime to DateTimeWithTimeZone
         let expiry_date = convert_time_to_datetime(record.expiry_date);
 
-        match SessionEntity::find_by_id(record.id.to_string())
-            .one(&self.conn)
-            .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?
-        {
-            Some(existing) => {
-                let mut active_model = existing.into_active_model();
-                active_model.data = Set(data);
-                active_model.expiry_date = Set(expiry_date);
-                active_model
+        // Use upsert functionality for better performance
+        let session_model = SessionActiveModel {
+            id: Set(record.id.to_string()),
+            data: Set(data),
+            expiry_date: Set(expiry_date),
+        };
+
+        // Try to insert, if it fails due to conflict, update instead
+        match session_model.clone().insert(&self.conn).await {
+            Ok(_) => Ok(()),
+            Err(sea_orm::DbErr::RecordNotInserted) => {
+                // Record exists, update it
+                session_model
                     .update(&self.conn)
                     .await
-                    .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+                    .map_err(crate::SeaOrmStoreError::SeaOrm)?;
+                Ok(())
             }
-            None => {
-                let session_model = SessionActiveModel {
-                    id: Set(record.id.to_string()),
-                    data: Set(data),
-                    expiry_date: Set(expiry_date),
-                };
-
-                session_model
-                    .insert(&self.conn)
-                    .await
-                    .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            Err(err) => {
+                // Check if it's a unique constraint violation (record already exists)
+                if err.to_string().contains("duplicate key") || err.to_string().contains("UNIQUE constraint") {
+                    // Update the existing record
+                    session_model
+                        .update(&self.conn)
+                        .await
+                        .map_err(crate::SeaOrmStoreError::SeaOrm)?;
+                    Ok(())
+                } else {
+                    Err(crate::SeaOrmStoreError::SeaOrm(err).into())
+                }
             }
         }
-
-        Ok(())
     }
 
     /// Loads a session record from the database by ID.
@@ -354,13 +409,13 @@ impl SessionStore for PostgresStore {
             .filter(session::Column::ExpiryDate.gt(now_db))
             .one(&self.conn)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            .map_err(crate::SeaOrmStoreError::SeaOrm)?;
 
         match session {
             Some(model) => {
                 // Deserialize the session data using MessagePack
                 let record = rmp_serde::from_slice(&model.data)
-                    .map_err(|e| session_store::Error::Decode(e.to_string()))?;
+                    .map_err(crate::SeaOrmStoreError::Decode)?;
                 Ok(Some(record))
             }
             None => Ok(None),
@@ -402,7 +457,7 @@ impl SessionStore for PostgresStore {
         SessionEntity::delete_by_id(session_id.to_string())
             .exec(&self.conn)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            .map_err(crate::SeaOrmStoreError::SeaOrm)?;
 
         Ok(())
     }
@@ -463,7 +518,7 @@ impl ExpiredDeletion for PostgresStore {
             .filter(session::Column::ExpiryDate.lt(now_db))
             .exec(&self.conn)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            .map_err(crate::SeaOrmStoreError::SeaOrm)?;
 
         Ok(())
     }
@@ -495,4 +550,20 @@ fn convert_time_to_datetime(time: OffsetDateTime) -> DateTimeWithTimeZone {
 
     // Convert to DateTimeWithTimeZone using TimeZone trait method instead of from_utc
     Utc.from_utc_datetime(&naive).into()
+}
+
+/// A valid PostgreSQL identifier must start with a letter or underscore
+/// (including letters with diacritical marks and non-Latin letters). Subsequent
+/// characters in an identifier or key word can be letters, underscores, digits
+/// (0-9), or dollar signs ($). See https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS for details.
+fn is_valid_identifier(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .next()
+            .map(|c| c.is_alphabetic() || c == '_')
+            .unwrap_or_default()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
 }

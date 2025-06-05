@@ -33,7 +33,7 @@
 //! ```
 
 use axum::{
-    extract::{Query, State},
+    extract::Query,
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -51,6 +51,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 // Application state that will be shared across handlers
 #[derive(Clone)]
 struct AppState {
+    #[allow(dead_code)]
     db: DatabaseConnection,
 }
 
@@ -86,6 +87,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the session store using our PostgresStore
     let store = PostgresStore::new(db.clone());
+
+    // Run migrations to ensure the session table exists
+    info!("Running database migrations...");
+    store.migrate().await?;
+    info!("Database migrations completed");
 
     // Create the app state
     let state = AppState { db };

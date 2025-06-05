@@ -11,7 +11,10 @@
 //! - Persistent session storage in PostgreSQL databases
 //! - Sea-ORM integration for type-safe database operations
 //! - Automatic session expiration and cleanup
-//! - Custom table name configuration
+//! - Custom schema and table name configuration with validation
+//! - Automatic database migration support (with `migration` feature)
+//! - Optimized upsert operations for better performance
+//! - Comprehensive error handling with dedicated error types
 //! - Serialization of session data using MessagePack for compact storage
 //!
 //! ## Quick Start
@@ -28,6 +31,9 @@
 //!
 //! // Create a new PostgresStore
 //! let store = PostgresStore::new(conn);
+//!
+//! // Run migrations to set up the database schema (requires "migration" feature)
+//! store.migrate().await?;
 //!
 //! // Use the store with tower-sessions
 //! let session_layer = tower_sessions::SessionManagerLayer::new(store)
@@ -51,7 +57,10 @@
 //!
 //! // Create the store with a custom table name
 //! let store = PostgresStore::new(conn)
-//!     .with_table_name("my_app_sessions");
+//!     .with_table_name("my_app_sessions")?;
+//!
+//! // Run migrations to set up the database schema
+//! store.migrate().await?;
 //!
 //! // Configure session layer
 //! let session_layer = SessionManagerLayer::new(store)
@@ -91,7 +100,37 @@
 //! ```
 
 pub mod entity;
+#[cfg(feature = "migration")]
+pub mod migration;
 mod postgres_store;
+
+pub use sea_orm;
+
+/// An error type for SeaORM stores.
+#[derive(thiserror::Error, Debug)]
+pub enum SeaOrmStoreError {
+    /// A variant to map Sea-ORM errors.
+    #[error(transparent)]
+    SeaOrm(#[from] sea_orm::DbErr),
+
+    /// A variant to map `rmp_serde` encode errors.
+    #[error(transparent)]
+    Encode(#[from] rmp_serde::encode::Error),
+
+    /// A variant to map `rmp_serde` decode errors.
+    #[error(transparent)]
+    Decode(#[from] rmp_serde::decode::Error),
+}
+
+impl From<SeaOrmStoreError> for tower_sessions::session_store::Error {
+    fn from(err: SeaOrmStoreError) -> Self {
+        match err {
+            SeaOrmStoreError::SeaOrm(inner) => tower_sessions::session_store::Error::Backend(inner.to_string()),
+            SeaOrmStoreError::Decode(inner) => tower_sessions::session_store::Error::Decode(inner.to_string()),
+            SeaOrmStoreError::Encode(inner) => tower_sessions::session_store::Error::Encode(inner.to_string()),
+        }
+    }
+}
 
 // Re-export our PostgreSQL store implementation
 /// The main PostgreSQL store implementation for tower-sessions
@@ -131,3 +170,4 @@ pub use tower_sessions::Session;
 ///
 /// Implemented by `PostgresStore` to provide the required storage functionality.
 pub use tower_sessions::SessionStore;
+
