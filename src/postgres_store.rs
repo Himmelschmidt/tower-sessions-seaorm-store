@@ -73,21 +73,13 @@ use crate::entity::session::{self, ActiveModel as SessionActiveModel, Entity as 
 pub struct PostgresStore {
     /// The Sea-ORM database connection used for database operations.
     conn: DatabaseConnection,
-    /// The name of the database schema used for storing sessions.
-    schema_name: String,
-    /// The name of the database table used for storing sessions.
-    table_name: String,
 }
 
 impl PostgresStore {
-    /// Creates a new PostgreSQL session store with the default configuration.
+    /// Creates a new PostgreSQL session store.
     ///
-    /// This constructor initializes a new `PostgresStore` with the provided Sea-ORM database connection
-    /// and the default schema and table configuration.
-    ///
-    /// **Important**: This method automatically configures the database connection to use the 
-    /// "tower_sessions" schema as the search path. If you need to use a different schema,
-    /// use `with_schema_name()` after construction.
+    /// This constructor initializes a new `PostgresStore` with the provided Sea-ORM database connection.
+    /// The store uses a fixed schema and table configuration for session storage.
     ///
     /// # Parameters
     ///
@@ -95,7 +87,7 @@ impl PostgresStore {
     ///
     /// # Returns
     ///
-    /// A new instance of `PostgresStore` configured with the default schema and table names.
+    /// A new instance of `PostgresStore`.
     ///
     /// # Examples
     ///
@@ -110,71 +102,9 @@ impl PostgresStore {
     /// # }
     /// ```
     pub fn new(conn: DatabaseConnection) -> Self {
-        Self {
-            conn,
-            schema_name: "tower_sessions".to_string(),
-            table_name: "session".to_string(),
-        }
+        Self { conn }
     }
 
-    /// Sets a custom table name for this store.
-    ///
-    /// This method allows customizing the table name used for session storage.
-    /// This is useful when you need to use a different table name than the default "tower_sessions".
-    ///
-    /// # Parameters
-    ///
-    /// * `table_name` - A string-like value representing the desired table name.
-    ///
-    /// # Returns
-    ///
-    /// The modified `PostgresStore` instance with the updated table name.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use sea_orm::{Database, DbConn};
-    /// use tower_sessions_seaorm_store::PostgresStore;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let conn = Database::connect("postgres://postgres:password@localhost:5432/sessions").await?;
-    ///
-    /// // Use a custom table name for multi-tenant applications or specific environments
-    /// let store = PostgresStore::new(conn).with_table_name("production_sessions");
-    /// # Ok(())
-    /// # }
-    /// ```
-    /// Set the session table schema name with the provided name.
-    pub fn with_schema_name(mut self, schema_name: impl AsRef<str>) -> Result<Self, String> {
-        let schema_name = schema_name.as_ref();
-        if !is_valid_identifier(schema_name) {
-            return Err(format!(
-                "Invalid schema name '{}'. Schema names must start with a letter or underscore \
-                 (including letters with diacritical marks and non-Latin letters). Subsequent \
-                 characters can be letters, underscores, digits (0-9), or dollar signs ($).",
-                schema_name
-            ));
-        }
-
-        schema_name.clone_into(&mut self.schema_name);
-        Ok(self)
-    }
-
-    /// Set the session table name with the provided name.
-    pub fn with_table_name(mut self, table_name: impl AsRef<str>) -> Result<Self, String> {
-        let table_name = table_name.as_ref();
-        if !is_valid_identifier(table_name) {
-            return Err(format!(
-                "Invalid table name '{}'. Table names must start with a letter or underscore \
-                 (including letters with diacritical marks and non-Latin letters). Subsequent \
-                 characters can be letters, underscores, digits (0-9), or dollar signs ($).",
-                table_name
-            ));
-        }
-
-        table_name.clone_into(&mut self.table_name);
-        Ok(self)
-    }
 
     /// Migrate the session schema.
     ///
@@ -556,18 +486,3 @@ fn convert_time_to_datetime(time: OffsetDateTime) -> DateTimeWithTimeZone {
     Utc.from_utc_datetime(&naive).into()
 }
 
-/// A valid PostgreSQL identifier must start with a letter or underscore
-/// (including letters with diacritical marks and non-Latin letters). Subsequent
-/// characters in an identifier or key word can be letters, underscores, digits
-/// (0-9), or dollar signs ($). See https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS for details.
-fn is_valid_identifier(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .next()
-            .map(|c| c.is_alphabetic() || c == '_')
-            .unwrap_or_default()
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-}

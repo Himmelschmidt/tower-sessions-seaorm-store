@@ -27,7 +27,7 @@ use sea_orm::entity::prelude::*;
 /// This entity is primarily used internally by the `PostgresStore` implementation
 /// and you typically won't need to interact with it directly when using this crate.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-#[sea_orm(table_name = "session")]
+#[sea_orm(table_name = "session", schema_name = "tower_sessions")]
 pub struct Model {
     /// The unique session identifier stored as a string.
     ///

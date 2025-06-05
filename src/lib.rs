@@ -11,7 +11,6 @@
 //! - Persistent session storage in PostgreSQL databases
 //! - Sea-ORM integration for type-safe database operations
 //! - Automatic session expiration and cleanup
-//! - Custom schema and table name configuration with validation
 //! - Automatic database migration support (with `migration` feature)
 //! - Optimized upsert operations for better performance
 //! - Comprehensive error handling with dedicated error types
@@ -55,9 +54,8 @@
 //! // Connect to the database
 //! let conn = Database::connect("postgres://postgres:postgres@localhost:5432/sessions").await?;
 //!
-//! // Create the store with a custom table name
-//! let store = PostgresStore::new(conn)
-//!     .with_table_name("my_app_sessions")?;
+//! // Create the store
+//! let store = PostgresStore::new(conn);
 //!
 //! // Run migrations to set up the database schema
 //! store.migrate().await?;
