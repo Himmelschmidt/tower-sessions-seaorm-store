@@ -1,15 +1,15 @@
 //! Session entity model for Sea-ORM database interaction.
 //!
 //! This module defines the database schema representation for session storage.
-//! It provides the Sea-ORM entity definition that maps to the "tower_sessions" table
-//! in the database.
+//! It provides the Sea-ORM entity definition that maps to the "session" table
+//! in the configured schema.
 
 use sea_orm::entity::prelude::*;
 
 /// Sea-ORM entity model representing a session in the database.
 ///
 /// This model defines the structure of the database table used to store sessions.
-/// It maps directly to the "tower_sessions" table (unless configured otherwise)
+/// It maps to the "session" table in the configured schema (by default "tower_sessions")
 /// and is used by the `PostgresStore` to interact with the database.
 ///
 /// # Database Schema
@@ -27,7 +27,7 @@ use sea_orm::entity::prelude::*;
 /// This entity is primarily used internally by the `PostgresStore` implementation
 /// and you typically won't need to interact with it directly when using this crate.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-#[sea_orm(table_name = "tower_sessions")]
+#[sea_orm(table_name = "session")]
 pub struct Model {
     /// The unique session identifier stored as a string.
     ///

@@ -83,7 +83,11 @@ impl PostgresStore {
     /// Creates a new PostgreSQL session store with the default configuration.
     ///
     /// This constructor initializes a new `PostgresStore` with the provided Sea-ORM database connection
-    /// and the default table name "tower_sessions".
+    /// and the default schema and table configuration.
+    ///
+    /// **Important**: This method automatically configures the database connection to use the 
+    /// "tower_sessions" schema as the search path. If you need to use a different schema,
+    /// use `with_schema_name()` after construction.
     ///
     /// # Parameters
     ///
@@ -91,7 +95,7 @@ impl PostgresStore {
     ///
     /// # Returns
     ///
-    /// A new instance of `PostgresStore` configured with the default table name.
+    /// A new instance of `PostgresStore` configured with the default schema and table names.
     ///
     /// # Examples
     ///
