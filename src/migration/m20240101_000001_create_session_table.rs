@@ -19,11 +19,11 @@ impl MigrationTrait for Migration {
             }
         }
 
-        // Create the session table
+        // Create the session table in the tower_sessions schema
         manager
             .create_table(
                 Table::create()
-                    .table(Session::Table)
+                    .table((Alias::new("tower_sessions"), Session::Table))
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Session::Id)
@@ -51,7 +51,7 @@ impl MigrationTrait for Migration {
                 Index::create()
                     .if_not_exists()
                     .name("idx-session-expiry_date")
-                    .table(Session::Table)
+                    .table((Alias::new("tower_sessions"), Session::Table))
                     .col(Session::ExpiryDate)
                     .to_owned(),
             )
@@ -66,9 +66,9 @@ impl MigrationTrait for Migration {
             .drop_index(Index::drop().name("idx-session-expiry_date").to_owned())
             .await?;
 
-        // Drop the session table
+        // Drop the session table from the tower_sessions schema
         manager
-            .drop_table(Table::drop().table(Session::Table).to_owned())
+            .drop_table(Table::drop().table((Alias::new("tower_sessions"), Session::Table)).to_owned())
             .await?;
 
         Ok(())
