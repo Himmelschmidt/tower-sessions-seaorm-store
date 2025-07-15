@@ -49,7 +49,13 @@ tokio = { version = "1.45.0", features = ["full"] }
 dotenvy = "0.15.7"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+serde = { version = "1.0", features = ["derive"] }
+tower-sessions-sqlx-store = { version = "0.15.0", features = ["postgres"] }
 
 [[example]]
 name = "axum_example"
 path = "examples/axum_example.rs"
+
+[[example]]
+name = "sqlx_store_with_seaorm"
+path = "examples/sqlx_store_with_seaorm.rs"
