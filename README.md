@@ -1,5 +1,7 @@
 # Tower Sessions SeaORM Store
 
+**Note: This project started due to a misunderstanding of how the tower-sessions sqlx crate works and how you can access sea-orm backend sqlx connections. The tower sessions sqlx crate has any functionality of this crate and some. As such this repo is inactive but kept open so I can learn more Rust. Please use tower sessions sqlx store, found here https://github.com/maxcountryman/tower-sessions-stores**
+
 A [SeaORM](https://www.sea-ql.org/SeaORM/) session store implementation for [tower-sessions](https://github.com/maxcountryman/tower-sessions), providing seamless session storage in PostgreSQL databases.
 
 ## Installation
